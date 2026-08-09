@@ -1,109 +1,17 @@
-// CardioLab — educational cardiovascular model layer.
-// Combines transparent Guyton-style venous return, Frank-Starling,
-// pressure-volume and simplified Windkessel relationships.
-
-export const BASELINE = {
-  hr: 72,
-  edv: 120,
-  esv: 50,
-  contractility: 100,
-  preload: 100,
-  afterload: 100,
-  svr: 1400,
-  pvr: 150,
-  bloodVolume: 5,
-  cvp: 5,
-  arterialCompliance: 1.6,
-  venousCompliance: 100,
-  respiratoryPressure: -4,
-  sympathetic: 20,
-};
-
-const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
-
-export function simulate(v) {
-  const contractileFactor = v.contractility / 100;
-  const afterloadFactor = v.afterload / 100;
-  const preloadFactor = v.preload / 100;
-  const volumeFactor = v.bloodVolume / 5;
-  const sympatheticFactor = v.sympathetic / 20;
-  const pms = clamp(5.8 * volumeFactor * (100 / v.venousCompliance), 2, 18);
-  const rvResistance = clamp(1 + (v.svr / 1400 - 1) * 0.22, 0.55, 1.8);
-  const venousReturn = clamp((pms - v.cvp) / rvResistance * 1.05 * preloadFactor, 0, 12);
-  const edv = clamp(v.edv * preloadFactor * (0.90 + 0.10 * volumeFactor), 50, 240);
-  const esv = clamp(v.esv * (1 / contractileFactor) * (0.76 + 0.24 * afterloadFactor), 20, 150);
-  const sv = clamp(edv - esv, 15, 180);
-  const co = (v.hr * sv) / 1000;
-  const ef = clamp((sv / edv) * 100, 5, 90);
-  const map = clamp(75 + (co - 5) * 8.5 + (v.svr - 1400) * 0.012 + (v.cvp - 5) * 0.3, 30, 190);
-  const pulsePressure = clamp(38 * (sv / 70) * (1400 / v.svr) * (1.6 / v.arterialCompliance), 15, 120);
-  const sbp = clamp(map + pulsePressure * 0.65, 45, 240);
-  const dbp = clamp(map - pulsePressure * 0.35, 25, 160);
-  const lvSys = clamp(95 * afterloadFactor + 15 * (contractileFactor - 1), 55, 240);
-  const rvSys = clamp(25 * (v.pvr / 150) + 3 * (preloadFactor - 1), 10, 110);
-  const papMean = clamp(15 * (v.pvr / 150) * (co / 5), 5, 90);
-  const coronaryPerfusion = clamp(dbp - v.cvp, 10, 160);
-  return { ...v, edv, esv, sv, co, ef, map, sbp, dbp, pulsePressure, pms, venousReturn, venousGradient: pms - v.cvp, rvResistance, lvSys, rvSys, papMean, coronaryPerfusion, rr: 60000 / v.hr, cycle: 60 / v.hr, sympatheticFactor };
-}
-
-export function guytonCurves(p) {
-  const cardiac = [], venous = [];
-  const maxCO = clamp(7 * (0.72 + 0.55 * (p.contractility / 100)), 4.5, 12);
-  for (let rap = -4; rap <= 12; rap += 0.25) {
-    const filling = clamp((rap + 4) / 8, 0, 1);
-    const co = clamp(maxCO * (1 - Math.exp(-2.3 * filling)), 0, maxCO);
-    const vr = rap >= p.pms ? 0 : clamp((p.pms - rap) / p.rvResistance * 1.05, 0, 12);
-    cardiac.push({ x: rap, y: co });
-    venous.push({ x: rap, y: vr });
-  }
-  return { cardiac, venous };
-}
-
-export function pvLoop(p) {
-  const points = [];
-  const edv = p.edv, esv = p.esv;
-  const eMax = 2.1 * (p.contractility / 100);
-  const diastolic = v => 4 + 0.045 * Math.exp((v - 70) / 35);
-  const systolic = v => clamp(eMax * (v - 10), 5, 190);
-  for (let v = esv; v <= edv; v += 2) points.push({ x: v, y: diastolic(v) });
-  for (let v = edv; v >= esv; v -= 2) points.push({ x: v, y: systolic(v) });
-  return points;
-}
-
-export function arterialWave(p, samples = 240) {
-  const points = [];
-  const period = 60 / p.hr;
-  const tau = clamp(p.arterialCompliance * (p.svr / 1400) * 0.55, 0.18, 1.4);
-  for (let i = 0; i < samples; i += 1) {
-    const t = (i / samples) * period;
-    const phase = t / period;
-    const systole = 0.33;
-    let pressure;
-    if (phase < systole) {
-      const u = phase / systole;
-      pressure = p.dbp + (p.sbp - p.dbp) * Math.sin(Math.PI * Math.pow(u, 0.65));
-    } else {
-      const d = (phase - systole) / (1 - systole);
-      pressure = p.dbp + (p.sbp - p.dbp) * Math.exp(-d * (1.8 / tau));
-      pressure += 3.5 * Math.exp(-(((d - 0.08) / 0.035) ** 2));
-    }
-    points.push({ x: t * 1000, y: pressure });
-  }
-  return points;
-}
-
-export function ecgCycle(heartRate, samples = 720) {
-  const points = [];
-  for (let i = 0; i <= samples; i += 3) {
-    const phase = ((i / samples) * 3 * heartRate) / 60 % 1;
-    const gaussian = (center, width, amp) => amp * Math.exp(-(((phase - center) / width) ** 2));
-    let y = 50;
-    y -= gaussian(0.16, 0.035, 10);
-    y += gaussian(0.375, 0.012, 7);
-    y -= gaussian(0.395, 0.009, 40);
-    y += gaussian(0.42, 0.014, 13);
-    y -= gaussian(0.68, 0.065, 15);
-    points.push(`${i},${y}`);
-  }
-  return points.join(' ');
-}
+// CardioLab physiology engine
+// Transparent educational models inspired by Guyton & Hall, Frank-Starling,
+// Windkessel and pressure-volume analysis. Not clinical decision support.
+export const BASELINE={hr:72,edv:120,esv:50,contractility:100,preload:100,afterload:100,svr:1400,pvr:150,bloodVolume:5,cvp:3,arterialCompliance:1.6,venousCompliance:1,radius:1,respiratoryRate:14,tidalVolume:.5,intrathoracicPressure:-4,sympathetic:20,coronaryFlow:100,coronaryOcclusion:0,territory:'none',scenario:'normal'};
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+const gauss=(x,c,w,a)=>a*Math.exp(-((x-c)/w)**2);
+function frankStarling(preload,contractility){const x=clamp(preload/100,.35,1.9);return clamp((.62+.78*(1-Math.exp(-1.55*x)))*(.72+.28*contractility/100),.35,1.55)}
+function guyton(v,co){const stressed=2.4*(v.bloodVolume/5)*(.92+.08*v.preload/100);const pms=clamp(7*stressed/v.venousCompliance,2,18);const rvResistance=clamp(1.15*(1400/v.svr)**.1,.75,1.45);const venousReturn=clamp((pms-v.cvp)/rvResistance,0,14);return{pms,rvResistance,venousReturn,venousGradient:pms-v.cvp,equilibriumRap:clamp(pms-co*rvResistance,-4,12)}}
+function oxygen(v,p){const perf=clamp(p.co/5*1400/v.svr*p.sv/70,.05,2.2);const sat=clamp(.98-Math.max(0,v.pvr-250)*.00008,.72,.99);const do2=1000*perf*sat;const vo2=250;const extraction=clamp(vo2/Math.max(do2,1),.15,.95);const low=clamp((.62-perf)/.57,0,1);const anaerobic=clamp(low**1.7+Math.max(0,extraction-.38)*.7,0,1.5);return{do2,vo2,extraction,sat,anaerobic,lactate:clamp(1+3.8*anaerobic+.35*Math.max(0,1-150/v.pvr),.7,12)}}
+export function simulate(v){const cf=v.contractility/100,af=v.afterload/100,pf=v.preload/100,r=v.radius;const radiusResistance=1/clamp(r,.45,1.8)**4;const effectiveSVR=clamp(v.svr*radiusResistance,150,6000);const ischemia=v.coronaryOcclusion/100;const territoryFactor=v.territory==='LAD'?.88:v.territory==='RCA'?.92:v.territory==='LCx'?.94:1;const regionalContractility=clamp(cf*(1-ischemia*.38)*territoryFactor,.25,2);const edv=clamp(v.edv*pf*(.92+.08*v.bloodVolume/5),45,250);const starling=frankStarling(v.preload,v.contractility);const esv=clamp(v.esv/regionalContractility*(.76+.24*af)+ischemia*13,25,180);let sv=clamp((edv-esv)*starling*.78,10,180);sv=clamp(sv*(1-ischemia*.28),8,180);const co=clamp(v.hr*sv/1000,.35,18);const ef=clamp(sv/edv*100,4,90);const g=guyton(v,co);const map=clamp(68+(co-5)*7.8+(effectiveSVR-1400)*.012+(v.cvp-3)*.35,25,210);const pulsePressure=clamp(37*(sv/70)*(1.6/v.arterialCompliance)*(1400/effectiveSVR)**.18,12,130);const sbp=clamp(map+pulsePressure*.66,40,260),dbp=clamp(map-pulsePressure*.34,20,180);const lvSys=clamp(92*af+18*(regionalContractility-1),45,260);const rvSys=clamp(24*v.pvr/150+4*(pf-1),8,120);const papMean=clamp(15*v.pvr/150*(co/5)+Math.max(0,v.intrathoracicPressure+4)*.2,5,100);const pulmonaryCongestion=clamp(Math.max(0,papMean-18)*3+Math.max(0,v.cvp-8)*1.4+(v.scenario==='cardiogenic'?22:0),0,100);const systemicCongestion=clamp((v.cvp-4)*10+(v.scenario==='rightHF'?30:0),0,100);const respiratoryMinuteVentilation=v.respiratoryRate*v.tidalVolume;const alveolarVentilation=Math.max(.05,v.respiratoryRate*(v.tidalVolume-.15));const o=oxygen(v,{co,sv});const lactate=clamp(o.lactate+(v.scenario==='septic'?.9:0)+(v.scenario==='hypovolemic'?.8:0),.7,14);const b1=.75+(v.afterload>150?.05:0)-(v.scenario==='mitralRegurgitation'?.18:0);const b2=.7+(v.scenario==='aorticStenosis'?.12:0);return{...v,effectiveSVR,radiusResistanceMultiplier:radiusResistance,edv,esv,sv,co,ef,map,sbp,dbp,pulsePressure,pms:g.pms,venousReturn:g.venousReturn,venousGradient:g.venousGradient,equilibriumRap:g.equilibriumRap,rvResistance:g.rvResistance,lvSys,rvSys,papMean,pulmonaryCongestion,systemicCongestion,coronaryPerfusion:clamp(dbp-v.cvp,8,180),respiratoryMinuteVentilation,alveolarVentilation,do2:o.do2,vo2:o.vo2,oxygenExtraction:o.extraction,oxygenSaturation:o.sat,anaerobicFraction:o.anaerobic,lactate,regionalContractility,starling,b1,b2,rr:60000/v.hr,cycle:60/v.hr}}
+export function guytonCurves(p){const cardiac=[],venous=[];const maxCO=clamp(7*(.72+.42*p.contractility/100)*(1-p.coronaryOcclusion/100*.18),3,11);for(let rap=-4;rap<=12;rap+=.2){const fill=clamp((rap+4)/8,0,1);cardiac.push({x:rap,y:clamp(maxCO*(1-Math.exp(-2.15*fill)),0,maxCO)});venous.push({x:rap,y:rap>=p.pms?0:clamp((p.pms-rap)/p.rvResistance,0,14)})}const x=p.equilibriumRap;return{cardiac,venous,intersection:{x,y:clamp((p.pms-x)/p.rvResistance,0,14)}}}
+export function pvLoop(p){const a=[],e=p.edv,s=p.esv,eMax=1.65*p.contractility/100*(1-p.coronaryOcclusion/100*.22);const dia=v=>3.5+.06*Math.exp((v-70)/35),sys=v=>clamp(eMax*(v-10)*(1-(p.afterload-100)/650),5,220);for(let v=s;v<=e;v+=2)a.push({x:v,y:dia(v)});for(let v=e;v>=s;v-=2)a.push({x:v,y:sys(v)});return a}
+export function arterialWave(p,n=240){const a=[],period=60/p.hr,tau=clamp(p.arterialCompliance*(p.effectiveSVR/1400)*.55,.14,1.7);for(let i=0;i<n;i++){const t=i/n*period,ph=t/period;let y;if(ph<.34){const u=ph/.34;y=p.dbp+(p.sbp-p.dbp)*Math.sin(Math.PI*u**.68)}else{const d=(ph-.34)/.66;y=p.dbp+(p.sbp-p.dbp)*Math.exp(-d*1.75/tau)+gauss(d,.08,.035,3.2)}a.push({x:t*1000,y})}return a}
+export function pulsePressureSeries(p,n=140){return Array.from({length:n},(_,i)=>{const x=i/(n-1),b=Math.sin(Math.PI*Math.min(1,x*1.55));return{x:x*p.cycle*1000,y:p.dbp+p.pulsePressure*Math.max(0,b)}})}
+export function phonocardiogram(p,n=360){const a=[];for(let i=0;i<n;i++){const ph=i/n;let y=gauss(ph,.045,.008,p.b1)+gauss(ph,.40,.009,p.b2);if(p.scenario==='aorticStenosis')y+=gauss(ph,.22,.055,.45);if(p.scenario==='mitralStenosis')y+=gauss(ph,.67,.045,.42);if(p.scenario==='aorticRegurgitation')y+=gauss(ph,.55,.09,.24);if(p.scenario==='mitralRegurgitation')y+=gauss(ph,.23,.09,.38);a.push({x:ph*p.cycle*1000,y})}return a}
+export function ecgPoints(p,n=420){const a=[],ischemia=p.coronaryOcclusion/100;for(let i=0;i<n;i++){const ph=i/n;let y=gauss(ph,.16,.035,.22)-gauss(ph,.395,.008,1)+gauss(ph,.415,.012,.32)+gauss(ph,.67,.065,.28);if(ischemia){if(p.territory==='LAD')y+=gauss(ph,.53,.075,.34*ischemia);if(p.territory==='RCA')y-=gauss(ph,.52,.075,.27*ischemia);if(p.territory==='LCx')y+=gauss(ph,.53,.07,.25*ischemia)}a.push({x:i/n*1000,y:50-y*34})}return a}
+export function causalChain(prev,next){if(next.radius<prev.radius)return['Raio ↓','Resistência ↑ (r⁻⁴)','Fluxo/perfusão ↓','DO₂ ↓','Lactato ↑'];if(next.radius>prev.radius)return['Raio ↑','Resistência ↓ (r⁻⁴)','Fluxo ↑','Perfusão ↑'];if(next.hr>prev.hr+2)return['FC ↑','Ciclo encurta','Tempo diastólico ↓','Enchimento pode ↓','CO se adapta'];if(next.contractility>prev.contractility+2)return['Contratilidade ↑','ESV ↓','VS ↑','CO ↑','Perfusão ↑'];if(next.contractility<prev.contractility-2)return['Contratilidade ↓','ESV ↑','VS ↓','CO ↓','Hipoperfusão/congestão'];if(next.svr>prev.svr+50)return['RVS ↑','Pós-carga ↑','Ejeção contra maior pressão','VS pode ↓'];if(next.svr<prev.svr-50)return['RVS ↓','Pós-carga ↓','Vasodilatação','PAM tende a ↓'];if(next.bloodVolume<prev.bloodVolume-.1)return['Volume sanguíneo ↓','Pms ↓','Retorno venoso ↓','Pré-carga ↓','CO ↓'];if(next.pvr>prev.pvr+10)return['RVP ↑','Pós-carga do VD ↑','PAP ↑','Fluxo pulmonar ↓'];return['Estado alterado','Motor fisiológico recalculado','Hemodinâmica atualizada','Visualizações sincronizadas']}
