@@ -1,0 +1,12 @@
+export const REFERENCES = [
+  {category:'Circulatory physiology',title:'Guyton, Jones & Coleman — Circulatory Physiology: Cardiac Output and Its Regulation',year:'1973',note:'Foundational treatment of cardiac output, venous return, mean systemic filling pressure and circulatory control.',url:'https://books.google.com/books/about/Circulatory_Physiology.html?id=DffkzwEACAAJ'},
+  {category:'Systems physiology',title:'Guyton, Coleman & Granger — Circulation: Overall Regulation',year:'1972',note:'Classic systems-level framework for integrated cardiovascular regulation.',url:'https://doi.org/10.1146/annurev.ph.34.030172.000305'},
+  {category:'Venous return',title:'Magder — Understanding Guyton’s venous return curves',year:'2012',note:'Modern clarification of the Guyton venous-return model and resistance to venous return.',url:'https://doi.org/10.1152/ajpheart.00228.2011'},
+  {category:'Baroreflex model',title:'Ursino — Interaction between carotid baroregulation and the pulsating heart',year:'1998',note:'Closed-loop mathematical model coupling heart, systemic/pulmonary circulation and baroreflex.',url:'https://doi.org/10.1152/ajpheart.1998.275.5.H1733'},
+  {category:'Arterial model',title:'Westerhof, Lankhaar & Westerhof — The arterial Windkessel',year:'2009',note:'Review of two-, three-element and characteristic-impedance Windkessel concepts.',url:'https://doi.org/10.1007/s11517-008-0359-2'},
+  {category:'Vascular tree',title:'Schumacher, Kaden & Trinkmann — Multiple coupled resonances in the human vascular tree',year:'2018',note:'Multicompartment arterial modeling extending the Westerhof approach.',url:'https://doi.org/10.1152/japplphysiol.00405.2017'},
+  {category:'Anatomy data',title:'NLM Visible Human Project',year:'1994–1995',note:'Public-domain cross-sectional cryosection, CT and MRI datasets used as an anatomical reference.',url:'https://www.nlm.nih.gov/research/visible/visible_human.html'},
+  {category:'3D anatomy',title:'NIH 3D / Human Reference Atlas — Male Heart',year:'2024',note:'Reference-organ GLB derived from Visible Human data.',url:'https://3d.nih.gov/entries/3DPX-021000'},
+  {category:'3D anatomy',title:'NIH 3D — Visible Human Heart, Vessels and Lungs',year:'2025',note:'Cardiopulmonary 3D model derived from the Visible Human male dataset.',url:'https://3d.nih.gov/entries/3DPX-023212'},
+  {category:'3D anatomy',title:'BodyParts3D / Anatomography',year:'2008',note:'Open anatomical geometry resource; derivatives are licensed CC BY-SA 2.1 Japan.',url:'https://github.com/Kevin-Mattheus-Moerman/BodyParts3D'},
+];
