@@ -1,60 +1,22 @@
-import React, { useMemo, useRef } from 'react';
+import React, { Suspense, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
+import { OrbitControls, PerspectiveCamera, useGLTF } from '@react-three/drei';
 
-const ROUTES = [
-  [[0,0.75,0],[0,2.35,0],[1.1,2.25,0],[1.45,1.25,0],[1.15,0.1,0],[0.55,-0.85,0]],
-  [[0,0.75,0],[0,2.35,0],[-1.1,2.25,0],[-1.45,1.25,0],[-1.15,0.1,0],[-0.55,-0.85,0]],
-  [[0.55,-0.85,0],[0.9,-1.55,0],[0,-2.15,0],[-0.9,-1.55,0],[-0.55,-0.85,0]],
-  [[-0.55,-0.85,0],[-1.25,-0.35,0],[-1.7,0.75,0],[-1.25,1.35,0],[-0.75,1.0,0],[0,0.75,0]],
-];
-
-function Tube({ points, radius=.035, color='#c95261' }) {
-  const curve = useMemo(() => new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(...p))), [points]);
-  return <mesh><tubeGeometry args={[curve, 40, radius, 8, false]}/><meshStandardMaterial color={color} roughness={.45} metalness={.05}/></mesh>;
-}
-
-function BloodFlow({ playing, speed=1 }) {
-  const refs = useRef([]);
-  const curves = useMemo(() => ROUTES.map(points => new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(...p)))), []);
-  const particles = useMemo(() => Array.from({length:32}, (_,i) => ({route:i%curves.length, offset:(i/32)})), [curves]);
-  useFrame((_, delta) => {
-    if (!playing) return;
-    refs.current.forEach((mesh, i) => {
-      if (!mesh) return;
-      const item = particles[i];
-      item.offset = (item.offset + delta * .16 * speed) % 1;
-      const point = curves[item.route].getPointAt(item.offset);
-      mesh.position.copy(point);
-    });
-  });
-  return <>{particles.map((item,i) => <mesh key={i} ref={el => refs.current[i]=el} position={curves[item.route].getPointAt(item.offset)}>
-    <sphereGeometry args={[.045,8,8]}/><meshBasicMaterial color={item.route===3?'#69a8ff':'#ef6d76'}/>
-  </mesh>)}</>;
-}
-
-function PulsingHeart({ hr, playing }) {
-  const ref = useRef();
-  useFrame((state) => {
-    const phase = ((state.clock.elapsedTime * hr) / 60) % 1;
-    const pulse = playing ? 1 + Math.max(0, Math.sin(phase * Math.PI * 2)) * .055 : 1;
-    if (ref.current) ref.current.scale.setScalar(pulse);
-  });
-  return <group ref={ref} position={[0,.55,0]}>
-    <mesh position={[-.28,.25,0]} scale={[.42,.48,.36]}><sphereGeometry args={[1,32,20]}/><meshStandardMaterial color="#b94658" roughness={.5}/></mesh>
-    <mesh position={[.28,.25,0]} scale={[.42,.48,.36]}><sphereGeometry args={[1,32,20]}/><meshStandardMaterial color="#b94658" roughness={.5}/></mesh>
-    <mesh position={[0,-.05,0]} scale={[.56,.75,.42]} rotation={[0,0,-.12]}><sphereGeometry args={[1,32,20]}/><meshStandardMaterial color="#8f3047" roughness={.48}/></mesh>
-  </group>;
-}
-function Lungs(){return <><mesh position={[-1.25,.7,0]} scale={[.65,1.25,.55]}><sphereGeometry args={[1,32,20]}/><meshStandardMaterial color="#456d7b" transparent opacity={.82}/></mesh><mesh position={[1.25,.7,0]} scale={[.65,1.25,.55]}><sphereGeometry args={[1,32,20]}/><meshStandardMaterial color="#456d7b" transparent opacity={.82}/></mesh></>}
-function Organ({position,scale,color}){return <mesh position={position} scale={scale}><sphereGeometry args={[1,28,18]}/><meshStandardMaterial color={color} roughness={.7}/></mesh>}
-
-function Anatomy({hr,playing}){return <group>
-  <Lungs/><PulsingHeart hr={hr} playing={playing}/>
-  <Organ position={[0,-1.35,0]} scale={[1.35,.48,.65]} color="#654c3d"/><Organ position={[-1.35,-1.2,0]} scale={[.35,.62,.32]} color="#5b3c58"/>
-  <Tube points={ROUTES[0]} radius={.065}/><Tube points={ROUTES[1]} radius={.065}/><Tube points={ROUTES[2]} radius={.055}/><Tube points={ROUTES[3]} radius={.055} color="#4d82c0"/>
-  <BloodFlow playing={playing} speed={Math.max(.45,Math.min(1.8,hr/72))}/>
-</group>}
-
-export default function Model3D({hr,playing}){return <div style={{position:'absolute',inset:0}}><Canvas shadows dpr={[1,2]}><PerspectiveCamera makeDefault position={[0,0,8]} fov={42}/><ambientLight intensity={1.5}/><directionalLight position={[4,5,5]} intensity={2.2}/><pointLight position={[-4,1,3]} intensity={1.2} color="#72dcb9"/><Anatomy hr={hr} playing={playing}/><OrbitControls enablePan={false} minDistance={5} maxDistance={12} target={[0,.1,0]}/></Canvas></div>}
+const ASSETS={
+ heart:'https://ccf-ontology.hubmapconsortium.org/objects/v1.2/VH_M_Heart.glb',
+ lungs:'https://ccf-ontology.hubmapconsortium.org/objects/v1.2/VH_M_Lung.glb',
+ liver:'https://ccf-ontology.hubmapconsortium.org/objects/v1.2/VH_M_Liver.glb',
+ spleen:'https://ccf-ontology.hubmapconsortium.org/objects/v1.2/VH_M_Spleen.glb',
+ vasculature:'https://ccf-ontology.hubmapconsortium.org/objects/v1.2/VH_M_Blood_Vasculature.glb',
+};
+function fitScene(scene,targetHeight=4.8){const clone=scene.clone(true);clone.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;if(o.material){o.material=o.material.clone();o.material.roughness=.62;o.material.metalness=.02;}}});const box=new THREE.Box3().setFromObject(clone);const size=box.getSize(new THREE.Vector3());const center=box.getCenter(new THREE.Vector3());const scale=targetHeight/Math.max(size.y,.001);clone.position.sub(center);clone.scale.setScalar(scale);return clone;}
+function ReferenceAsset({url,targetHeight,position=[0,0,0],opacity=1}){const {scene}=useGLTF(url);const fitted=useMemo(()=>fitScene(scene,targetHeight),[scene,targetHeight]);fitted.position.set(...position);fitted.traverse(o=>{if(o.isMesh&&o.material){o.material.transparent=opacity<1;o.material.opacity=opacity;}});return <primitive object={fitted}/>;}
+function PulsingReferenceHeart({hr,playing}){const ref=useRef();useFrame(state=>{if(!ref.current)return;const phase=((state.clock.elapsedTime*hr)/60)%1;const pulse=playing?1+Math.max(0,Math.sin(phase*Math.PI*2))*.035:1;ref.current.scale.setScalar(pulse);});return <group ref={ref}><ReferenceAsset url={ASSETS.heart} targetHeight={2.0} position={[0,.15,.25]}/></group>;}
+function ReferenceAnatomy({hr,playing}){return <group><ReferenceAsset url={ASSETS.vasculature} targetHeight={6.4} position={[0,.1,-.15]} opacity={.30}/><ReferenceAsset url={ASSETS.lungs} targetHeight={3.1} position={[0,.85,.05]} opacity={.82}/><PulsingReferenceHeart hr={hr} playing={playing}/><ReferenceAsset url={ASSETS.liver} targetHeight={1.7} position={[.05,-1.15,.08]} opacity={.88}/><ReferenceAsset url={ASSETS.spleen} targetHeight={1.15} position={[-.82,-.95,.08]} opacity={.9}/></group>;}
+const ROUTES=[[[0,.1,.2],[0,1.25,.2],[.7,1.65,.2],[1.2,.8,.2],[1.1,-.4,.2],[.45,-1.3,.2]],[[0,.1,.2],[0,1.25,.2],[-.7,1.65,.2],[-1.2,.8,.2],[-1.1,-.4,.2],[-.45,-1.3,.2]],[[.45,-1.3,.2],[.85,-1.8,.2],[0,-2.35,.2],[-.85,-1.8,.2],[-.45,-1.3,.2]]];
+function FlowNetwork({playing,speed}){const refs=useRef([]);const curves=useMemo(()=>ROUTES.map(r=>new THREE.CatmullRomCurve3(r.map(p=>new THREE.Vector3(...p)))),[]);const particles=useMemo(()=>Array.from({length:42},(_,i)=>({route:i%curves.length,t:i/42})),[curves]);useFrame((_,dt)=>{if(!playing)return;refs.current.forEach((m,i)=>{if(!m)return;const q=particles[i];q.t=(q.t+dt*.13*speed)%1;m.position.copy(curves[q.route].getPointAt(q.t));});});return <>{particles.map((q,i)=><mesh key={i} ref={m=>refs.current[i]=m}><sphereGeometry args={[.035,8,8]}/><meshBasicMaterial color={q.route===1?'#ef7078':'#6aa9ff'}/></mesh>)}</>;}
+function ReferenceScene({hr,playing}){return <group><ReferenceAnatomy hr={hr} playing={playing}/><FlowNetwork playing={playing} speed={Math.max(.45,Math.min(1.8,hr/72))}/></group>;}
+function Loading(){return <mesh><sphereGeometry args={[.001,4,4]}/><meshBasicMaterial transparent opacity={0}/></mesh>;}
+export default function Model3D({hr,playing}){return <div className="model-canvas"><Canvas shadows dpr={[1,2]} gl={{antialias:true,powerPreference:'high-performance'}}><color attach="background" args={['#040b13']}/><PerspectiveCamera makeDefault position={[0,.2,7.2]} fov={38}/><ambientLight intensity={1.15}/><hemisphereLight intensity={1} groundColor="#07121c"/><directionalLight position={[4,6,5]} intensity={2.4} castShadow/><pointLight position={[-4,1,3]} intensity={1.4} color="#64e4b7"/><Suspense fallback={<Loading/>}><ReferenceScene hr={hr} playing={playing}/></Suspense><OrbitControls enablePan={false} minDistance={4.5} maxDistance={11} target={[0,0,0]} enableDamping dampingFactor={.08}/></Canvas><div className="anatomy-badge">REFERENCE ANATOMY • VISIBLE HUMAN / HuBMAP</div></div>;}
+Object.values(ASSETS).forEach(url=>useGLTF.preload(url));
