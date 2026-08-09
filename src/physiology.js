@@ -24,17 +24,13 @@ export function simulate(v) {
   const preloadFactor = v.preload / 100;
   const volumeFactor = v.bloodVolume / 5;
 
-  // Venous return is represented with a Guyton-style stressed-volume / resistance proxy.
   const venousReturn = clamp(5.0 * preloadFactor * volumeFactor * (100 / afterloadFactor), 1, 12);
-
-  // ESV responds inversely to contractility and positively to afterload.
   const esv = clamp(v.esv * (1 / contractileFactor) * (0.75 + 0.25 * afterloadFactor), 20, 130);
   const edv = clamp(v.edv * preloadFactor * (0.90 + 0.10 * volumeFactor), 50, 220);
   const sv = clamp(edv - esv, 15, 160);
   const co = (v.hr * sv) / 1000;
   const ef = clamp((sv / edv) * 100, 10, 90);
 
-  // MAP approximation in mmHg. Pulse pressure is estimated from SV and arterial tone.
   const map = clamp(75 + (co - 5) * 9 + (v.svr - 1400) * 0.012, 35, 180);
   const pulsePressure = clamp(40 * (sv / 70) * (1400 / v.svr), 18, 110);
   const sbp = clamp(map + pulsePressure * 0.65, 45, 230);
@@ -56,8 +52,8 @@ export function simulate(v) {
 export function ecgCycle(heartRate, samples = 720) {
   const points = [];
   for (let i = 0; i <= samples; i += 3) {
-    const phase = (i / samples) * 3 * heartRate / 60 % 1;
-    const gaussian = (center, width, amp) => amp * Math.exp(-((phase - center) / width) ** 2);
+    const phase = ((i / samples) * 3 * heartRate / 60) % 1;
+    const gaussian = (center, width, amp) => amp * Math.exp(-(((phase - center) / width) ** 2));
     let y = 50;
     y -= gaussian(0.16, 0.035, 10);
     y += gaussian(0.375, 0.012, 7);
