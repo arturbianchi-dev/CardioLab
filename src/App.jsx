@@ -1,26 +1,164 @@
-import './pro.css';
-import React,{useMemo,useState} from 'react';
-import {Activity,BookOpen,BrainCircuit,ChevronRight,Clock3,FlaskConical,Fullscreen,GitCompare,HeartPulse,Pause,Play,RotateCcw,Save,ShieldCheck,Target,Volume2} from 'lucide-react';
-import {BASELINE,simulate,guytonCurves,frankStarling,causalChain} from './core/physiologyEngine.js';
-import {VARIABLE_INFO} from './variables.js';
-import {LESSONS,CLINICAL_CASES,CHALLENGES,MODEL_SOURCES} from './data/education.js';
-const PRESETS={hypovolemic:{bloodVolume:3.2,preloadScale:.62,hr:105,afterloadScale:1.35,radius:.91,sympathetic:75,scenario:'hypovolemic'},cardiogenic:{contractility:45,preloadScale:1.35,bloodVolume:5.1,hr:98,afterloadScale:1.25,scenario:'cardiogenic'},septic:{hr:112,afterloadScale:.45,radius:1.28,sympathetic:30,preloadScale:1.08,bloodVolume:5.1,scenario:'septic'},tep:{pulmonaryResistanceScale:4.33,hr:108,preloadScale:1.25,afterloadScale:1.18,scenario:'tep'},tamponade:{preloadScale:.58,bloodVolume:4.7,hr:112,afterloadScale:1.3,intrathoracicPressure:2,scenario:'tamponade'},tensionPtx:{intrathoracicPressure:14,preloadScale:.55,hr:118,afterloadScale:1.32,pulmonaryResistanceScale:2.6,scenario:'tensionPtx'},leftHF:{contractility:50,preloadScale:1.35,afterloadScale:1.18,bloodVolume:5.2,scenario:'leftHF'},rightHF:{pulmonaryResistanceScale:2.87,preloadScale:1.25,hr:92,scenario:'rightHF'},aorticStenosis:{afterloadScale:1.85,contractility:105,scenario:'aorticStenosis'},aorticRegurgitation:{preloadScale:1.35,afterloadScale:.88,scenario:'aorticRegurgitation'},mitralStenosis:{preloadScale:.90,pulmonaryResistanceScale:1.6,hr:86,scenario:'mitralStenosis'},mitralRegurgitation:{preloadScale:1.30,contractility:92,scenario:'mitralRegurgitation'}};
-const MI={LAD:{wall:'anterior + septal',leads:'V1–V4'},RCA:{wall:'inferior ± VD',leads:'II, III, aVF'},LCx:{wall:'lateral',leads:'I, aVL, V5–V6'}};
-const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));const fmt=(x,n=1)=>Number.isFinite(x)?x.toFixed(n):'—';
-function Q({id,onOpen}){return <button className="q" onClick={e=>{e.stopPropagation();onOpen(id)}} aria-label={`Explicar ${VARIABLE_INFO[id]?.label||id}`}>?</button>}
-function Slider({id,label,min,max,step=1,unit,value,onChange,onOpen}){return <div className="slider-row"><div className="slider-head"><span>{label}<Q id={id} onOpen={onOpen}/></span><b>{fmt(value,step<1?2:0)} <i>{unit}</i></b></div><input type="range" min={min} max={max} step={step} value={value} onChange={e=>onChange(+e.target.value)}/><div className="range-hint"><span>{min}</span><span>{VARIABLE_INFO[id]?.label||label}</span><span>{max}</span></div></div>}
-function Metric({id,label,value,unit,onOpen}){return <div className="metric"><span>{label}<Q id={id} onOpen={onOpen}/></span><strong>{value}<small>{unit}</small></strong></div>}
-function Modal({id,onClose}){const x=VARIABLE_INFO[id];if(!x)return null;return <div className="overlay" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-top"><div><span className="kicker">MINI-AULA CONTEXTUAL</span><h2>{x.label}</h2></div><button className="x" onClick={onClose}>×</button></div><p>{x.definition}</p>{x.formula&&<div className="formula"><span>FÓRMULA</span><b>{x.formula}</b></div>}<div className="two-col"><div><h4>↑ aumenta</h4><ul>{x.up?.map(v=><li key={v}>{v}</li>)}</ul></div><div><h4>↓ diminui</h4><ul>{x.down?.map(v=><li key={v}>{v}</li>)}</ul></div></div><h4>Patologias / cenários</h4><div className="tags">{x.pathologies?.map(v=><span key={v}>{v}</span>)}</div></div></div>}
-function Chart({title,data=[],series=[],point,unitX='',unitY='',height=220}){const W=760,H=height,pad=42;const all=[...data,...series.flatMap(s=>s.data||[]),point||{}].filter(v=>Number.isFinite(v.x)&&Number.isFinite(v.y));if(!all.length)return null;const xmin=Math.min(...all.map(v=>v.x)),xmax=Math.max(...all.map(v=>v.x)),ymin=Math.min(...all.map(v=>v.y)),ymax=Math.max(...all.map(v=>v.y));const sx=x=>pad+(x-xmin)/Math.max(xmax-xmin,1)*(W-pad-16),sy=y=>H-pad-(y-ymin)/Math.max(ymax-ymin,1)*(H-pad-18),path=a=>a.map((d,i)=>`${i?'L':'M'}${sx(d.x).toFixed(1)},${sy(d.y).toFixed(1)}`).join(' ');return <div className="chart-wrap"><div className="chart-title"><b>{title}</b><span>{unitY}</span></div><svg viewBox={`0 0 ${W} ${H}`} className="chart"><g className="grid"><line x1={pad} x2={W-16} y1={sy(ymin)} y2={sy(ymin)}/><line x1={pad} x2={W-16} y1={sy((ymin+ymax)/2)} y2={sy((ymin+ymax)/2)}/><line x1={pad} x2={pad} y1="10" y2={H-pad}/></g>{data.length>1&&<path d={path(data)} className="line primary"/>}{series.map((s,i)=><path d={path(s.data)} key={i} className={`line s${i}`}/>)}{point&&<><circle cx={sx(point.x)} cy={sy(point.y)} r="5" className="point"/><line x1={sx(point.x)} x2={sx(point.x)} y1="12" y2={H-pad} className="marker"/></>}<text x={W-16} y={H-7} textAnchor="end">{unitX}</text></svg></div>}
-function Wave({title,data,unit}){return <div className="wave-card"><div className="panel-head"><span>{title}</span><small>{unit}</small></div><Chart data={data} unitY={unit}/></div>}
-function Causal({items}){return <div className="causal"><div className="panel-head"><span>CADEIA CAUSAL</span><small>causa → mecanismo → consequência</small></div><div className="causal-flow">{items.map((x,i)=><React.Fragment key={i}><div className="causal-node"><b>{i+1}</b>{x}</div>{i<items.length-1&&<ChevronRight size={14}/>}</React.Fragment>)}</div></div>}
-function Anatomy({p}){return <div className="anatomy"><div className="panel-head"><span>ANATOMIA RESPONSIVA</span><small>visualização fisiológica</small></div><div className="anatomy-body"><div className="organ-map"><div className="lung left" style={{opacity:1-p.pulmonaryCongestion/240}}>PULMÃO</div><div className="lung right" style={{opacity:1-p.pulmonaryCongestion/240}}>PULMÃO</div><div className="vessel aorta">AORTA</div><div className="vessel cava">VEIAS CAVAS</div><div className="organ-heart" style={{'--beat':`${Math.max(.32,p.cycle)}s`}}><div className="chamber ra">AD</div><div className="chamber la">AE</div><div className="chamber rv">VD</div><div className="chamber lv">VE</div><div className="valve mitral">MV</div><div className="valve aortic">AV</div><div className="coronary lad" style={{opacity:p.coronaryPerfusion/100}}>LAD</div><div className="coronary rca" style={{opacity:p.coronaryPerfusion/120}}>RCA</div></div><div className="liver" style={{transform:`scale(${1+p.systemicCongestion/500})`}}>FÍGADO</div><div className="spleen">BAÇO</div><div className="rbc r1"/><div className="rbc r2"/><div className="rbc r3"/></div><div className="anatomy-readout"><div><b>{fmt(p.pulmonaryCongestion,0)}%</b><span>congestão pulmonar</span></div><div><b>{fmt(p.systemicCongestion,0)}%</b><span>congestão sistêmica</span></div><div><b>{fmt(p.coronaryPerfusion,0)}</b><span>perfusão coronária relativa</span></div></div></div></div>}
-function ClinicalMap({p}){return <div className="clinical-map"><div className="panel-head"><span>MAPA FISIOPATOLÓGICO</span><small>macro → micro</small></div><div className="body-map"><div className="node heart-node">CORAÇÃO<strong>{fmt(p.co,1)} L/min</strong></div><div className="node lung-node">PULMÕES<strong>{fmt(p.pulmonaryCongestion,0)}% congestão</strong></div><div className="node tissue-node">TECIDO<strong>DO₂ {fmt(p.do2,0)}</strong></div><div className="node liver-node">FÍGADO<strong>{fmt(p.systemicCongestion,0)}% congestão</strong></div><div className="arrow a1">↓</div><div className="arrow a2">↓</div><div className="arrow a3">↓</div></div></div>}
-function Controls({state,setState,onOpen,onReset,onScenario,mi,setMi}){const set=(k,v)=>setState(s=>({...s,[k]:v}));return <aside className="controls"><div className="control-title"><div><span className="kicker">EXPERIMENTO</span><h2>Você controla</h2></div><button className="reset" onClick={onReset}><RotateCcw size={12}/>RESET</button></div><div className="control-note"><FlaskConical size={14}/><span>Inputs à esquerda. Outputs são calculados pelo motor.</span></div><section className="group"><h3>❤️ CORAÇÃO</h3><Slider id="hr" label="Frequência cardíaca" min={35} max={180} value={state.hr} unit="bpm" onChange={v=>set('hr',v)} onOpen={onOpen}/><Slider id="contractility" label="Contratilidade" min={25} max={180} value={state.contractility} unit="%" onChange={v=>set('contractility',v)} onOpen={onOpen}/><Slider id="preload" label="Pré-carga" min={45} max={160} value={state.preloadScale*100} unit="%" onChange={v=>set('preloadScale',v/100)} onOpen={onOpen}/><Slider id="afterload" label="Pós-carga" min={45} max={220} value={state.afterloadScale*100} unit="%" onChange={v=>set('afterloadScale',v/100)} onOpen={onOpen}/></section><section className="group"><h3>🩸 VASOS</h3><Slider id="svr" label="Raio vascular" min={.55} max={1.45} step={.01} value={state.radius} unit="×" onChange={v=>set('radius',v)} onOpen={onOpen}/><Slider id="compliance" label="Complacência arterial" min={.45} max={2.2} step={.05} value={state.arterialComplianceScale} unit="×" onChange={v=>set('arterialComplianceScale',v)} onOpen={onOpen}/><Slider id="bloodVolume" label="Volume sanguíneo" min={3} max={7} step={.1} value={state.bloodVolume} unit="L" onChange={v=>set('bloodVolume',v)} onOpen={onOpen}/></section><section className="group"><h3>🫁 RESPIRAÇÃO</h3><Slider id="respiratoryRate" label="Frequência respiratória" min={6} max={35} value={state.respiratoryRate} unit="/min" onChange={v=>set('respiratoryRate',v)} onOpen={onOpen}/><Slider id="intrathoracicPressure" label="Pressão intratorácica" min={-12} max={18} value={state.intrathoracicPressure} unit="mmHg" onChange={v=>set('intrathoracicPressure',v)} onOpen={onOpen}/></section><section className="group"><h3>🧠 CONTROLE</h3><Slider id="sympathetic" label="Simpático" min={0} max={100} value={state.sympathetic} unit="%" onChange={v=>set('sympathetic',v)} onOpen={onOpen}/></section><section className="group"><h3>🫀 IAM</h3><div className="mi-buttons">{Object.entries(MI).map(([k,v])=><button className={mi===k?'selected':''} key={k} onClick={()=>{setMi(k);setState(s=>({...s,coronaryOcclusion:mi===k?0:100,territory:k,scenario:mi===k?'normal':'MI'}))}}><b>{k}</b><span>{v.wall}</span></button>)}</div></section><section className="group"><h3>CENÁRIOS</h3><div className="scenario-buttons">{CLINICAL_CASES.map(c=><button key={c.id} onClick={()=>onScenario(c.preset)}>{c.title}</button>)}</div></section></aside>}
-function Monitor({p,onOpen}){return <aside className="monitor"><div className="section-head"><span>MONITOR</span><small>outputs do modelo</small></div><div className={`status ${p.lactate>4?'danger':''}`}><span><i/> {p.lactate>4?'LOW PERFUSION':'HEMODYNAMICALLY STABLE'}</span><small>educational model</small></div><div className="vitals"><div><HeartPulse/><span>FC</span><b>{fmt(p.hr,0)}</b><small>bpm</small></div><div><Activity/><span>PAM</span><b>{fmt(p.map,0)}</b><small>mmHg</small></div><div><Activity/><span>DC</span><b>{fmt(p.co,1)}</b><small>L/min</small></div></div><div className="metric-list"><Metric id="sv" label="Volume sistólico" value={fmt(p.sv,0)} unit="mL" onOpen={onOpen}/><Metric id="co" label="Débito cardíaco" value={fmt(p.co,1)} unit="L/min" onOpen={onOpen}/><Metric id="map" label="PAM" value={fmt(p.map,0)} unit="mmHg" onOpen={onOpen}/><Metric id="svr" label="RVS efetiva" value={fmt(p.effectiveSVR,0)} unit="dyn·s/cm⁵" onOpen={onOpen}/><Metric id="pvr" label="RVP efetiva" value={fmt(p.effectivePVR,0)} unit="dyn·s/cm⁵" onOpen={onOpen}/><Metric id="cvp" label="Pressão atrial direita" value={fmt(p.rap,1)} unit="mmHg" onOpen={onOpen}/><Metric id="pulsePressure" label="Pressão de pulso" value={fmt(p.pulsePressure,0)} unit="mmHg" onOpen={onOpen}/><Metric id="do2" label="DO₂" value={fmt(p.do2,0)} unit="mL/min" onOpen={onOpen}/></div><div className={`lactate ${p.lactate>2?'bad':''}`}><div><span>LACTATO</span><span>anaeróbio</span></div><strong>{fmt(p.lactate,1)} <small>mmol/L</small></strong><div className="anaerobic"><i style={{width:`${clamp(p.anaerobic/1.5*100,0,100)}%`}}/></div><small>Perfusão {fmt(p.perf*100,0)}% · extração O₂ {fmt(p.oxygenExtraction*100,0)}%</small></div><div className="clinical-mini"><b>CONGESTÃO</b><span>Pulmonar {fmt(p.pulmonaryCongestion,0)}%</span><span>Sistêmica {fmt(p.systemicCongestion,0)}%</span></div></aside>}
-function Learning({onExperiment}){return <div className="wide learn"><div className="learn-hero"><span className="kicker">LEARN BY EXPERIMENT</span><h1>Não decore. Manipule o sistema.</h1><p>Conceito → experimento → observação → hipótese → explicação → desafio.</p></div><div className="lesson-grid">{LESSONS.map(l=><article key={l.id}><span>NÍVEL {l.level}</span><h3>{l.title}</h3><code>{l.formula}</code><p>{l.goal}</p><button onClick={()=>onExperiment(l)}><FlaskConical size={12}/> EXPERIMENTAR <ChevronRight size={12}/></button></article>)}</div><div className="sources"><h2>Model transparency</h2><p>O modelo é educacional e não representa um paciente individual.</p>{MODEL_SOURCES.map(s=><div className="source" key={s[0]}><b>{s[0]}</b><strong>{s[1]}</strong><span>{s[2]}</span></div>)}</div></div>}
-function Cases({onScenario,mi,setMi,setState}){const[cid,setCid]=useState('hemorrhage');const c=CLINICAL_CASES.find(x=>x.id===cid);return <div className="wide cases"><div className="case-head"><div><span className="kicker">CLINICAL CASE LAB</span><h1>Investigue antes de revelar.</h1><p>{c.brief}</p></div><div className="difficulty">{c.difficulty}</div></div><div className="case-grid"><div className="case-list">{CLINICAL_CASES.map(x=><button className={x.id===cid?'active':''} key={x.id} onClick={()=>setCid(x.id)}><b>{x.title}</b><span>{x.difficulty}</span></button>)}</div><div className="case-main"><h2>{c.title}</h2><div className="clues">{c.clues.map(x=><span key={x}>{x}</span>)}</div><p>Reproduza o padrão no laboratório e explique o mecanismo.</p><button className="primary" onClick={()=>onScenario(c.preset)}><FlaskConical size={14}/> ABRIR NO LABORATÓRIO</button>{cid==='MI'&&<div className="mi-case"><b>Identifique a coronária</b><div>{Object.entries(MI).map(([k,v])=><button key={k} onClick={()=>{setMi(k);setState(s=>({...s,coronaryOcclusion:100,territory:k,scenario:'MI'}));}} className={mi===k?'selected':''}><strong>{k}</strong><span>{v.leads}</span></button>)}</div></div>}</div></div></div>}
-function Challenges({p,onReset}){return <div className="wide challenges"><div className="learn-hero"><span className="kicker">CHALLENGE MODE</span><h1>Faça o sistema obedecer.</h1><p>Objetivos avaliados pelo estado calculado pelo motor.</p></div><div className="challenge-grid">{CHALLENGES.map(c=>{const ok=c.objective(p);return <article key={c.id} className={ok?'solved':''}><div><span>{c.difficulty}</span>{ok&&<ShieldCheck size={16}/>}</div><h3>{c.title}</h3><p>{ok?'Objetivo atingido.':c.hint}</p><button onClick={onReset}>{ok?'CONCLUÍDO':'RESETAR'}</button></article>})}</div></div>}
-function Compare({saved,p}){const a=saved||simulate(BASELINE),rows=[['FC','hr','bpm'],['PAM','map','mmHg'],['DC','co','L/min'],['VS','sv','mL'],['RVS','effectiveSVR','dyn·s/cm⁵'],['RVP','effectivePVR','dyn·s/cm⁵'],['RAP','rap','mmHg'],['DO₂','do2','mL/min'],['Lactato','lactate','mmol/L']];return <div className="wide compare"><div className="learn-hero"><span className="kicker">A / B</span><h1>Compare estados fisiológicos.</h1><p>Salve A, experimente B e compare as consequências.</p></div><div className="compare-table"><div className="ct-head"><span>VARIÁVEL</span><b>ESTADO A</b><b>ESTADO B</b><b>Δ</b></div>{rows.map(r=><div className="ct-row" key={r[0]}><span>{r[0]}</span><b>{fmt(a[r[1]],r[1]==='co'||r[1]==='lactate'?1:0)} <small>{r[2]}</small></b><b>{fmt(p[r[1]],r[1]==='co'||r[1]==='lactate'?1:0)} <small>{r[2]}</small></b><strong>{fmt(p[r[1]]-a[r[1]],1)}</strong></div>)}</div></div>}
-function App(){const[state,setState]=useState({...BASELINE});const[p,setP]=useState(()=>simulate(state));const[tab,setTab]=useState('lab');const[playing,setPlaying]=useState(true);const[speed,setSpeed]=useState(1);const[modal,setModal]=useState(null);const[why,setWhy]=useState(false);const[previous,setPrevious]=useState(state);const[saved,setSaved]=useState(null);const[mi,setMi]=useState('none');React.useEffect(()=>setP(simulate(state)),[state]);const chain=useMemo(()=>causalChain(previous,state),[previous,state]);const setWithHistory=fn=>{setPrevious(state);setState(fn)};const reset=()=>{setPrevious(state);setState({...BASELINE});setMi('none')};const scenario=name=>{const next={...BASELINE,...(PRESETS[name]||{})};setPrevious(state);setState(next);setMi(next.territory||'none');setTab('lab')};const learnExperiment=l=>{setTab('lab');setPrevious(state);if(l.id==='poiseuille'||l.id==='pressure-flow')setState(s=>({...s,radius:.7}));else if(l.id==='heart')setState(s=>({...s,hr:110}));else if(l.id==='frank-starling')setState(s=>({...s,preloadScale:1.35}));else if(l.id==='venous-return')setState(s=>({...s,bloodVolume:6}));else if(l.id==='guyton')setState(s=>({...s,contractility:140}));else if(l.id==='arterial-pressure')setState(s=>({...s,afterloadScale:1.35}));else if(l.id==='regulation')setState(s=>({...s,sympathetic:75}));else if(l.id==='shock')setState(s=>({...s,bloodVolume:3.3,preloadScale:.65,hr:105}));else setState(s=>({...s,contractility:55}))};return <div className="app"><header className="topbar"><div className="brand"><div className="brandmark">♥</div><div><b>Cardio<span>Lab</span></b><small>VIRTUAL CARDIOVASCULAR PHYSIOLOGY LABORATORY</small></div></div><div className="top-actions"><button onClick={()=>setPlaying(v=>!v)}>{playing?<Pause size={13}/>:<Play size={13}/>} {playing?'PAUSE':'RUN'}</button><button onClick={()=>setSpeed(speed===4?1:speed*2)}><Clock3 size={13}/> {speed}×</button><button onClick={()=>setSaved(JSON.parse(JSON.stringify(p)))}><Save size={13}/> SAVE A</button><button onClick={()=>setTab('compare')}><GitCompare size={13}/> COMPARE</button><button onClick={()=>document.documentElement.requestFullscreen?.()}><Fullscreen size={13}/></button></div></header><nav className="subnav"><button className={tab==='lab'?'active':''} onClick={()=>setTab('lab')}><FlaskConical size={12}/> LABORATÓRIO</button><button className={tab==='cases'?'active':''} onClick={()=>setTab('cases')}><HeartPulse size={12}/> CASOS CLÍNICOS</button><button className={tab==='learn'?'active':''} onClick={()=>setTab('learn')}><BookOpen size={12}/> APRENDER</button><button className={tab==='challenges'?'active':''} onClick={()=>setTab('challenges')}><Target size={12}/> DESAFIOS</button><button className={tab==='compare'?'active':''} onClick={()=>setTab('compare')}><GitCompare size={12}/> A/B</button><span className="model-status"><i/> MODEL ONLINE · 0D COUPLED CIRCULATION</span></nav>{tab==='lab'?<><main><Controls state={state} setState={setWithHistory} onOpen={setModal} onReset={reset} onScenario={scenario} mi={mi} setMi={setMi}/><section className="stage"><div className="hero-status"><div><span className="kicker">LIVE EXPERIMENT</span><h1>{state.scenario==='normal'?'Fisiologia basal':'Estado: '+state.scenario}</h1></div><div className="hero-vitals"><b>{fmt(p.hr,0)}<small>HR</small></b><b>{fmt(p.map,0)}<small>MAP</small></b><b>{fmt(p.co,1)}<small>CO</small></b></div></div><Anatomy p={p}/><ClinicalMap p={p}/><Causal items={chain}/><div className="wave-grid"><Wave title="ECG" data={p.ecg} unit="mV"/><Wave title="Fonocardiograma B1/B2" data={p.phonocardiogram} unit="som relativo"/><Wave title="Pressão aórtica" data={p.aortic} unit="mmHg"/><Wave title="Fluxo aórtico" data={p.aorticFlow} unit="mL/s"/></div><div className="charts"><Chart title="Guyton — débito × retorno venoso" series={[{data:guytonCurves(p).cardiac},{data:guytonCurves(p).venous}]} point={guytonCurves(p).intersection} unitX="RAP (mmHg)" unitY="L/min"/><Chart title="Frank-Starling" data={frankStarling(p)} unitX="Pré-carga relativa" unitY="Volume sistólico"/><Chart title="Loop pressão-volume — VE" data={p.pv} unitX="Volume (mL)" unitY="Pressão (mmHg)"/><Chart title="Pressão de pulso" data={p.aortic.map(z=>({x:z.x,y:z.y-p.dbp}))} unitX="ms" unitY="mmHg"/></div><div className="model-note"><b>TRANSPARÊNCIA DO MODELO</b><br/>Modelo cardiovascular 0D educacional com compartimentos, resistências, complacências e elastância variável. Resultados são aproximações para ensino, não parâmetros de um paciente real.</div></section><Monitor p={p} onOpen={setModal}/></main><div className="bottom-tools"><button onClick={()=>setWhy(v=>!v)}><BrainCircuit size={14}/> POR QUÊ?</button>{why&&<div className="why-pop"><b>O que mudou?</b><span>{chain.join(' → ')}</span><small>Interpretação educacional do estado atual.</small></div>}<span><Volume2 size={13}/> B1/B2 sincronizados · {playing?'LIVE':'PAUSED'}</span></div></>:tab==='learn'?<main className="single"><Learning onExperiment={learnExperiment}/></main>:tab==='cases'?<main className="single"><Cases onScenario={scenario} mi={mi} setMi={setMi} setState={setState}/></main>:tab==='challenges'?<main className="single"><Challenges p={p} onReset={reset}/></main>:<main className="single"><Compare saved={saved} p={p}/></main>}{modal&&<Modal id={modal} onClose={()=>setModal(null)}/>}</div>}
+import './styles.css';
+import React, { useMemo, useState } from 'react';
+import { BarChart3, BookOpen, BrainCircuit, CheckCircle2, Download, FileSpreadsheet, FileText, FlaskConical, LineChart, MessageSquareText, UploadCloud } from 'lucide-react';
+
+const REFERENCES = [
+  'Altman DG. Practical Statistics for Medical Research. Chapman & Hall/CRC, 1991.',
+  'Bland M. An Introduction to Medical Statistics. Oxford University Press, 2015.',
+  'Kirkwood BR, Sterne JAC. Essential Medical Statistics. Wiley-Blackwell, 2003.',
+  'Pagano M, Gauvreau K. Principles of Biostatistics. CRC Press, 2018.',
+  'Rosner B. Fundamentals of Biostatistics. Cengage, 2015.',
+  'Zar JH. Biostatistical Analysis. Pearson, 2010.'
+];
+
+const STUDY_TYPES = [
+  {
+    title: 'Ensaio clínico / intervenção',
+    clues: ['randomizado', 'intervenção', 'placebo', 'antes e depois', 'tratamento'],
+    tests: ['t de Student ou Mann–Whitney para grupos independentes', 't pareado ou Wilcoxon para pré/pós', 'Qui-quadrado/Fisher para proporções', 'ANCOVA ou regressão para ajuste'],
+    charts: ['CONSORT flow', 'forest plot', 'boxplot/violin plot', 'gráfico de barras com IC95%']
+  },
+  {
+    title: 'Coorte longitudinal',
+    clues: ['seguimento', 'incidência', 'risco', 'tempo até evento', 'sobrevida'],
+    tests: ['Kaplan–Meier e log-rank', 'regressão de Cox', 'risco relativo', 'modelos mistos para medidas repetidas'],
+    charts: ['curva de Kaplan–Meier', 'forest plot de hazard ratios', 'spaghetti plot', 'heatmap de desfechos']
+  },
+  {
+    title: 'Caso-controle',
+    clues: ['casos', 'controles', 'odds', 'exposição prévia'],
+    tests: ['odds ratio', 'regressão logística', 'McNemar para pareados', 'Qui-quadrado/Fisher'],
+    charts: ['forest plot de OR', 'mosaic plot', 'love plot de balanceamento']
+  },
+  {
+    title: 'Transversal / prevalência',
+    clues: ['prevalência', 'questionário', 'amostra', 'associação', 'transversal'],
+    tests: ['estimativa de prevalência com IC95%', 'Qui-quadrado/Fisher', 'correlação Spearman/Pearson', 'regressão linear/logística'],
+    charts: ['barras com IC95%', 'histograma/densidade', 'matriz de correlação', 'scatter plot']
+  },
+  {
+    title: 'Diagnóstico / acurácia',
+    clues: ['sensibilidade', 'especificidade', 'roc', 'teste diagnóstico', 'padrão ouro'],
+    tests: ['sensibilidade, especificidade, VPP, VPN', 'AUC ROC', 'índice de Youden', 'Kappa'],
+    charts: ['curva ROC', 'matriz de confusão', 'calibration plot']
+  }
+];
+
+const R_PIPELINE = `# Pipeline R sugerido pelo StatHealth Studio
+library(tidyverse)
+library(readxl)
+library(janitor)
+library(gtsummary)
+library(rstatix)
+library(ggpubr)
+library(survival)
+library(survminer)
+
+# 1. Importação flexível
+# dados <- read_csv('dados.csv')
+# dados <- read_excel('dados.xlsx')
+dados_limpos <- dados |> clean_names() |> remove_empty(c('rows', 'cols'))
+
+# 2. Dicionário automático de variáveis
+dicionario <- dados_limpos |>
+  summarise(across(everything(), ~ paste(class(.x), collapse = ', '))) |>
+  pivot_longer(everything(), names_to = 'variavel', values_to = 'classe')
+
+# 3. Tabela 1 em padrão de revista
+tabela_1 <- dados_limpos |>
+  tbl_summary(by = grupo, statistic = list(all_continuous() ~ '{mean} ({sd})')) |>
+  add_p() |>
+  add_overall() |>
+  bold_labels()
+
+# 4. Exemplo de teste orientado pelo tipo de variável
+resultado <- dados_limpos |> t_test(desfecho ~ grupo)
+
+# 5. Gráfico publicável
+grafico <- ggboxplot(dados_limpos, x = 'grupo', y = 'desfecho', color = 'grupo',
+  palette = 'jco', add = 'jitter') + theme_pubr() + labs(x = NULL, y = 'Desfecho')
+
+ggsave('grafico_desfecho.jpg', grafico, width = 7, height = 5, dpi = 320)`;
+
+function classifyStudy(text) {
+  const lower = text.toLowerCase();
+  return STUDY_TYPES.map(type => ({
+    ...type,
+    score: type.clues.reduce((sum, clue) => sum + (lower.includes(clue) ? 1 : 0), 0)
+  })).sort((a, b) => b.score - a.score)[0];
+}
+
+function App() {
+  const [planText, setPlanText] = useState('Estudo transversal com questionário para estimar prevalência e associação entre exposição e desfecho em adultos.');
+  const [instructions, setInstructions] = useState('Priorizar análise ajustada por idade e sexo, com gráficos em padrão de revista clínica.');
+  const recommendation = useMemo(() => classifyStudy(planText), [planText]);
+
+  return <div className="site-shell">
+    <header className="hero">
+      <nav className="nav"><div className="logo"><span>SH</span> StatHealth Studio</div><a href="#analysis">Começar análise</a></nav>
+      <div className="hero-grid">
+        <section>
+          <span className="eyebrow">Bioestatística acadêmica assistida por IA + R</span>
+          <h1>Do plano de trabalho ao relatório estatístico pronto para publicação.</h1>
+          <p>Uma experiência pensada para pesquisadores da saúde: o usuário anexa metodologia, introdução e dados; a plataforma categoriza o estudo, sugere testes, gera gráficos elegantes em R e devolve código, tabelas, figuras e texto de resultados.</p>
+          <div className="hero-actions"><a className="primary" href="#workflow">Ver fluxo</a><a className="secondary" href="#references">Referências</a></div>
+        </section>
+        <aside className="glass-card impact-card">
+          <BrainCircuit size={30}/><h2>Recomendação orientada por desenho de estudo</h2>
+          <p>As sugestões combinam regras de decisão baseadas em livros clássicos de estatística médica com contexto fornecido pelo usuário.</p>
+        </aside>
+      </div>
+    </header>
+
+    <main>
+      <section id="workflow" className="section">
+        <span className="eyebrow">Fluxo completo</span><h2>Quatro etapas integradas</h2>
+        <div className="steps">
+          {[
+            ['1', 'Plano acadêmico', 'Upload do projeto, metodologia, hipóteses, objetivos e descrição dos dados.', FileText],
+            ['2', 'Triagem estatística', 'Classificação do estudo e sugestão de testes, modelos e gráficos adequados.', FlaskConical],
+            ['3', 'Execução em R', 'Importação de CSV/XLS/XLSX, limpeza, recodificação, análise e visualização.', FileSpreadsheet],
+            ['4', 'Entrega final', 'Código R explicado, relatório IA, tabelas, JPGs e sugestão de redação dos resultados.', Download]
+          ].map(([n, title, text, Icon]) => <article className="step-card" key={n}><Icon/><b>{n}</b><h3>{title}</h3><p>{text}</p></article>)}
+        </div>
+      </section>
+
+      <section id="analysis" className="section analysis-grid">
+        <div className="panel">
+          <div className="panel-title"><UploadCloud/><div><span className="eyebrow">Entrada do usuário</span><h2>Anexe ou cole o plano de trabalho</h2></div></div>
+          <label className="upload-box"><input type="file" accept=".pdf,.doc,.docx,.txt"/> <FileText/> <span>PDF, DOCX ou TXT com introdução, metodologia e dados</span></label>
+          <textarea value={planText} onChange={e => setPlanText(e.target.value)} aria-label="Resumo do plano de trabalho" />
+        </div>
+        <div className="panel recommendation">
+          <span className="eyebrow">Sugestão automática</span><h2>{recommendation.title}</h2>
+          <p>Pontuação de compatibilidade: {recommendation.score || 'baixa — revisar manualmente'}</p>
+          <h3>Testes prováveis</h3><ul>{recommendation.tests.map(item => <li key={item}>{item}</li>)}</ul>
+          <h3>Gráficos recomendados</h3><ul>{recommendation.charts.map(item => <li key={item}>{item}</li>)}</ul>
+        </div>
+      </section>
+
+      <section className="section execution">
+        <div><span className="eyebrow">Laboratório R no site</span><h2>Área de execução estatística</h2><p>O front-end foi desenhado para acoplar um serviço R/plumber, WebR ou ambiente seguro de execução no backend. O usuário pode enviar dados, orientar decisões e aprovar etapas antes da análise final.</p></div>
+        <div className="lab-grid">
+          <label className="upload-box dark"><input type="file" accept=".csv,.xls,.xlsx,.sav,.dta,.ods"/> <FileSpreadsheet/> <span>Dados em CSV, XLS, XLSX, SAV, DTA ou ODS</span></label>
+          <div className="instruction-box"><MessageSquareText/><textarea value={instructions} onChange={e => setInstructions(e.target.value)} aria-label="Instruções para a análise" /></div>
+        </div>
+        <div className="code-card"><div><CheckCircle2/> Script R reproduzível e comentado</div><pre>{R_PIPELINE}</pre></div>
+      </section>
+
+      <section className="section outputs">
+        <span className="eyebrow">Saídas geradas</span><h2>Pacote final para o pesquisador</h2>
+        <div className="output-grid">
+          <article><BookOpen/><h3>Relatório interpretado</h3><p>Arquivo com métodos, resultados, limitações e interpretação assistida por IA.</p></article>
+          <article><BarChart3/><h3>Tabelas publicáveis</h3><p>Tabela 1, testes inferenciais, medidas de efeito e IC95% em estilo de periódico.</p></article>
+          <article><LineChart/><h3>Figuras JPG</h3><p>Gráficos em 320 dpi com temas como NEJM, JAMA, Nature, Lancet e ABNT.</p></article>
+          <article><FileText/><h3>Texto de resultados</h3><p>Parágrafos sugeridos com valores de p, estimativas, intervalos e linguagem acadêmica.</p></article>
+        </div>
+      </section>
+
+      <section id="references" className="section references"><span className="eyebrow">Base bibliográfica</span><h2>Referências exibidas ao usuário</h2>{REFERENCES.map(ref => <p key={ref}>{ref}</p>)}</section>
+    </main>
+  </div>;
+}
+
 export default App;
